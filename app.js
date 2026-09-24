@@ -151,9 +151,9 @@ function renderAll(){
 
 /* ---------- hoja de detalle ---------- */
 let sheetUrls = [];
-function openSheet(html){ closeUrls(); $("#panel").innerHTML = html; $("#sheet").hidden = false; $("#panel").scrollTop = 0; }
+function openSheet(html){ closeUrls(); $("#panel").innerHTML = html; $("#sheet").classList.add("open"); $("#panel").scrollTop = 0; }
 function closeUrls(){ sheetUrls.forEach(u => URL.revokeObjectURL(u)); sheetUrls = []; }
-function closeSheet(){ $("#sheet").hidden = true; $("#panel").innerHTML = ""; closeUrls(); }
+function closeSheet(){ $("#sheet").classList.remove("open"); $("#panel").innerHTML = ""; closeUrls(); }
 $("#sheet").addEventListener("click", e => { if(e.target.id==="sheet") closeSheet(); });
 
 async function openReceipt(id, matchIdx){
