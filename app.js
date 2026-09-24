@@ -6,8 +6,9 @@ const key = s => String(s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const money = n => (n == null || n === "" || isNaN(n)) ? "—" : "$" + Number(n).toFixed(2);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-/* ---------- almacenamiento local (IndexedDB) ---------- */
-const store = (() => {
+/* ---------- almacenamiento ---------- */
+// En este celular (IndexedDB): se usa antes de configurar Firebase y para pasar recibos viejos a la nube
+const localStore = (() => {
   let dbp;
   const open = () => dbp ||= new Promise((res, rej) => {
     const r = indexedDB.open("recibos", 1);
@@ -44,7 +45,13 @@ const DEMO = [{
   ]
 }];
 
-async function reload(){ receipts = await store.all(); loaded = true; renderAll(); }
+let store = localStore;      // se cambia por la nube al iniciar sesión
+let cloudMode = false;
+let unwatch = null;
+async function reload(){
+  if(cloudMode){ renderAll(); return; }      // en la nube la lista se actualiza sola (onSnapshot)
+  receipts = await store.all(); loaded = true; renderAll();
+}
 
 /* ---------- helpers ---------- */
 function storeClass(s){ s=(s||"").toLowerCase(); return s.includes("ross")?"ross":s.includes("marsh")?"marshalls":"other"; }
@@ -310,10 +317,12 @@ function toBlob(canvas, q){ return new Promise(res => canvas.toBlob(res, "image/
 async function prepare(file){
   const img = await loadImage(file);
   const W = img.naturalWidth, H = img.naturalHeight;
-  const keepS = Math.min(1, 1600/Math.max(W,H));
+  const keepS = Math.min(1, 1400/Math.max(W,H));
   const k = document.createElement("canvas"); k.width = Math.round(W*keepS); k.height = Math.round(H*keepS);
   k.getContext("2d").drawImage(img,0,0,k.width,k.height);
-  return {src:file, keep: await toBlob(k, 0.8)};
+  let keep = await toBlob(k, 0.72);
+  if(keep.size > 600000) keep = await toBlob(k, 0.5);
+  return {src:file, keep};
 }
 // Escala la foto para que el lado corto mida `width` px (el lector lee mejor a cierto tamaño de letra)
 async function scaled(file, width){
@@ -450,11 +459,90 @@ $("#importFile").addEventListener("change", async e => {
   e.target.value = "";
 });
 
+/* ---------- cuenta en la nube (Firebase) ---------- */
+// Achica una foto (de respaldos o recibos viejos) para que quepa en un documento de Firestore
+async function fitPhoto(blob){
+  if(blob.size <= 600000) return blob;
+  const img = await loadImage(blob);
+  const s = Math.min(1, 1400/Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth*s); c.height = Math.round(img.naturalHeight*s);
+  c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+  let b = await toBlob(c, 0.6); if(b.size > 600000) b = await toBlob(c, 0.4);
+  return b;
+}
+const AUTH_ERR = {
+  "auth/invalid-email":"Ese correo no es válido.",
+  "auth/missing-password":"Escribe tu contraseña.",
+  "auth/weak-password":"La contraseña debe tener al menos 6 caracteres.",
+  "auth/email-already-in-use":"Ya existe una cuenta con ese correo. Toca “Entrar”.",
+  "auth/invalid-credential":"Correo o contraseña incorrectos.",
+  "auth/wrong-password":"Correo o contraseña incorrectos.",
+  "auth/user-not-found":"No hay cuenta con ese correo. Toca “Crear cuenta”.",
+  "auth/too-many-requests":"Demasiados intentos. Espera unos minutos.",
+  "auth/network-request-failed":"Sin conexión. Revisa tu internet.",
+  "auth/operation-not-allowed":"Falta activar “Correo/contraseña” en Firebase (Authentication → Sign-in method).",
+};
+function showLogin(show){ $("#login").classList.toggle("open", show); }
+function bindLogin(Cloud){
+  const st = $("#loginStatus");
+  const creds = () => [$("#lEmail").value.trim(), $("#lPass").value];
+  const run = async (fn, busy) => {
+    setStatus(st, `<span class="spinner"></span>${busy}`);
+    try{ await fn(); setStatus(st, ""); }
+    catch(e){ setStatus(st, AUTH_ERR[e?.code] || "No se pudo. Intenta otra vez.", true); }
+  };
+  $("#loginForm").addEventListener("submit", e => { e.preventDefault(); run(() => Cloud.signIn(...creds()), "Entrando…"); });
+  $("#signupBtn").onclick = () => run(() => Cloud.signUp(...creds()), "Creando tu cuenta…");
+  $("#resetBtn").onclick = () => {
+    const email = creds()[0];
+    if(!email){ setStatus(st, "Escribe tu correo arriba y vuelve a tocar “Olvidé mi contraseña”.", true); return; }
+    run(async () => { await Cloud.reset(email); setTimeout(()=>setStatus(st, "Te enviamos un correo para cambiar la contraseña."), 0); }, "Enviando…");
+  };
+  $("#logoutBtn").onclick = async () => { await Cloud.signOut(); };
+}
+// Sube a la nube los recibos que se guardaron en este celular antes de usar Firebase (una sola vez)
+async function migrateLocal(){
+  let local = []; try{ local = await localStore.all(); }catch(e){ return; }
+  if(!local.length) return;
+  const st = $("#backupStatus");
+  setStatus(st, `<span class="spinner"></span>Pasando ${local.length} recibo${local.length===1?"":"s"} de este celular a la nube…`);
+  for(const r of local){
+    for(const pid of (r.photos||[])){ const b = await localStore.getPhoto(pid).catch(()=>null); if(b) await store.putPhoto(pid, b); }
+    await store.put(r);
+    await localStore.del(r.id);
+    for(const pid of (r.photos||[])) await localStore.delPhoto(pid).catch(()=>{});
+  }
+  setStatus(st, `Listo: ${local.length} recibo${local.length===1?"":"s"} de este celular ahora están en la nube.`);
+}
+async function startCloud(Cloud){
+  bindLogin(Cloud);
+  Cloud.onAuth(async user => {
+    unwatch?.(); unwatch = null;
+    if(!user){
+      cloudMode = false; receipts = []; loaded = false; renderAll();
+      $("#account").hidden = true; showLogin(true); return;
+    }
+    showLogin(false);
+    cloudMode = true;
+    store = {...Cloud, putPhoto: async (id, b) => Cloud.putPhoto(id, await fitPhoto(b))};
+    $("#account").hidden = false; $("#accountEmail").textContent = user.email;
+    unwatch = Cloud.watchReceipts(list => { receipts = list; loaded = true; renderAll(); },
+      () => { loaded = true; renderAll(); $("#results").innerHTML = `<div class="empty">No se pudo leer la nube. Revisa que las reglas de Firestore estén publicadas.</div>`; });
+    migrateLocal();
+  });
+}
+
+/* ---------- inicio ---------- */
 /* ---------- inicio ---------- */
 (async () => {
   let start = "buscar"; try{ start = localStorage.getItem("tab") || "buscar"; }catch(e){}
   go(start); renderAll();
-  try{ await reload(); }catch(e){ loaded = true; renderAll(); $("#results").innerHTML = `<div class="empty">Este navegador no permite guardar datos (¿modo incógnito?). Ábrela en una ventana normal.</div>`; }
+  // espera la conexión con Firebase (máx. 10 s); si no está configurada o no carga, sigue guardando en el celular
+  const Cloud = await Promise.race([window.cloudReady, new Promise(r => setTimeout(() => r(null), 10000))]).catch(() => null);
+  if(Cloud?.configured){ startCloud(Cloud); }
+  else {
+    try{ await reload(); }catch(e){ loaded = true; renderAll(); $("#results").innerHTML = `<div class="empty">Este navegador no permite guardar datos (¿modo incógnito?). Ábrela en una ventana normal.</div>`; }
+  }
   try{ await navigator.storage?.persist?.(); }catch(e){}
   if("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(()=>{});
 })();

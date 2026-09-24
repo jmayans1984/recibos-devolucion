@@ -166,6 +166,15 @@ nav.tabs button[aria-selected="true"]{color:var(--accent)}
 .progress > i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
 .backup{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;font-size:13.5px;color:var(--muted)}
 .backup p{margin:0 0 10px}
+.login{position:fixed;inset:0;z-index:30;background:var(--ground);display:none;align-items:center;justify-content:center;padding:24px 16px calc(24px + env(safe-area-inset-bottom,0px))}
+.login.open{display:flex}
+.login form{width:100%;max-width:380px;display:flex;flex-direction:column;gap:10px}
+.login h1{font-size:24px;margin:0;letter-spacing:-.01em}
+.login p{margin:0 0 6px;color:var(--muted);font-size:14px}
+.login input{height:50px;border-radius:12px;border:1px solid var(--line);background:var(--paper);padding:0 14px;font-size:16px}
+.login .link{background:none;border:0;color:var(--accent);font-size:14px;padding:6px 0;align-self:center}
+.account{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;font-size:13.5px;color:var(--muted)}
+.account b{color:var(--ink);font-weight:600;word-break:break-all}
 details.raw{margin-top:12px;font-size:13px;color:var(--muted)}
 details.raw pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:240px;overflow:auto}
 </style>
@@ -216,9 +225,13 @@ details.raw pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;back
 
   <section data-tab="recibos" id="tabRecibos" hidden>
     <div id="receiptList" class="list"></div>
+    <div id="account" hidden>
+      <div class="label" style="margin-top:22px">Cuenta</div>
+      <div class="account"><span>Sincronizado en la nube como <b id="accountEmail"></b></span><button class="btn ghost" id="logoutBtn" style="height:40px">Cerrar sesión</button></div>
+    </div>
     <div class="label" style="margin-top:22px">Respaldo</div>
     <div class="backup">
-      <p>Tus recibos se guardan solo en este celular. Haz un respaldo de vez en cuando (por ejemplo, guárdalo en Google Drive o iCloud) para no perderlos si cambias de teléfono o borras los datos del navegador.</p>
+      <p>Descarga una copia de todos tus recibos (con fotos) en un archivo. Con “Cargar respaldo” la vuelves a subir.</p>
       <div class="row">
         <button class="btn ghost" id="exportBtn">Guardar respaldo</button>
         <button class="btn ghost" id="importBtn">Cargar respaldo</button>
@@ -240,9 +253,24 @@ details.raw pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;back
   </div>
 </nav>
 
+<div class="login" id="login">
+  <form id="loginForm" novalidate>
+    <h1>Recibos de Devolución</h1>
+    <p>Entra con tu cuenta para ver tus recibos en cualquier celular o computadora.</p>
+    <input id="lEmail" type="email" autocomplete="username" inputmode="email" placeholder="Correo" aria-label="Correo">
+    <input id="lPass" type="password" autocomplete="current-password" placeholder="Contraseña (mínimo 6 caracteres)" aria-label="Contraseña">
+    <button class="btn primary" type="submit">Entrar</button>
+    <button class="btn ghost" type="button" id="signupBtn">Crear cuenta</button>
+    <button class="link" type="button" id="resetBtn">Olvidé mi contraseña</button>
+    <div class="status" id="loginStatus"></div>
+  </form>
+</div>
+
 <div class="sheet" id="sheet"><div class="panel" id="panel"></div></div>
 
-<script src="parser.js?v=4"></script>
-<script src="app.js?v=4"></script>
+<script>window.cloudReady = new Promise(r => { window._cloudResolve = r; });</script>
+<script type="module" src="cloud.js?v=5"></script>
+<script src="parser.js?v=5"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>
