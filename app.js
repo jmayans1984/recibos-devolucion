@@ -238,6 +238,7 @@ function openEditor(data, existingId, rawText){
     </div>
     <div class="label">Productos (<span id="nItems">${data.items.length}</span>)</div>
     <div class="items" id="items">${data.items.map(itemHtml).join("")}</div>
+    <div class="status" id="sumCheck"></div>
     <div class="row" style="margin-top:10px"><button class="btn ghost" id="addItem">+ Agregar producto</button></div>
     <div class="row" style="margin-top:14px"><button class="btn primary" id="saveBtn">Guardar recibo</button></div>
     <div class="status" id="saveStatus"></div>
@@ -250,9 +251,23 @@ function openEditor(data, existingId, rawText){
       return {...old, code:$("#ic"+i).value.trim(), name:$("#in"+i).value.trim(), price:$("#ip"+i).value.trim()};
     });
   };
-  const rerender = () => { $("#items").innerHTML = data.items.map(itemHtml).join(""); $("#nItems").textContent = data.items.length; bindRm(); };
+  const rerender = () => { $("#items").innerHTML = data.items.map(itemHtml).join(""); $("#nItems").textContent = data.items.length; bindRm(); sumCheck(); };
   const bindRm = () => p.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { collect(); data.items.splice(Number(b.dataset.rm),1); rerender(); });
   bindRm();
+  // compara la suma de los productos con el subtotal impreso para detectar productos que faltan o precios mal leídos
+  const sumCheck = () => {
+    const el = $("#sumCheck"); if(data.subtotal == null){ el.textContent = ""; return; }
+    let sum = 0;
+    p.querySelectorAll(".item").forEach(it => { const i = it.dataset.i; sum += (Number(String($("#ip"+i).value).replace(/[^0-9.\-]/g,""))||0) * (Number(data.items[i]?.qty)||1); });
+    sum = Math.round(sum*100)/100;
+    const diff = Math.round((data.subtotal - sum)*100)/100;
+    el.className = "status" + (Math.abs(diff) < 0.01 ? "" : " err");
+    el.innerHTML = Math.abs(diff) < 0.01
+      ? `✓ La suma de los productos (${money(sum)}) cuadra con el subtotal del recibo.`
+      : `La suma de los productos (${money(sum)}) no cuadra con el subtotal del recibo (${money(data.subtotal)}): ${diff>0?`faltan ${money(diff)}`:`sobran ${money(-diff)}`}. Revisa si falta un producto o algún precio está mal.`;
+  };
+  $("#items").addEventListener("input", sumCheck);
+  sumCheck();
   p.querySelector("[data-close]").onclick = closeSheet;
   $("#addItem").onclick = () => { collect(); data.items.push({code:"",name:"",price:"",qty:1}); rerender(); $("#ic"+(data.items.length-1)).focus(); };
   $("#saveBtn").onclick = async () => {
@@ -291,26 +306,23 @@ async function loadImage(file){
   finally{ setTimeout(()=>URL.revokeObjectURL(url), 1000); }
 }
 function toBlob(canvas, q){ return new Promise(res => canvas.toBlob(res, "image/jpeg", q)); }
-// Dos versiones: una grande en gris con contraste para leer, y otra liviana para guardar
+// Guarda una versión liviana de la foto; la lectura se hace luego en varios tamaños
 async function prepare(file){
   const img = await loadImage(file);
   const W = img.naturalWidth, H = img.naturalHeight;
   const keepS = Math.min(1, 1600/Math.max(W,H));
   const k = document.createElement("canvas"); k.width = Math.round(W*keepS); k.height = Math.round(H*keepS);
   k.getContext("2d").drawImage(img,0,0,k.width,k.height);
-  const keep = await toBlob(k, 0.8);
-  // para leer: ancho de ~1800px, gris y más contraste
-  const ocrS = Math.min(2, 1800/Math.min(W,H), 4000/Math.max(W,H));
-  const c = document.createElement("canvas"); c.width = Math.round(W*ocrS); c.height = Math.round(H*ocrS);
-  const ctx = c.getContext("2d"); ctx.drawImage(img,0,0,c.width,c.height);
-  const d = ctx.getImageData(0,0,c.width,c.height), px = d.data;
-  let min=255, max=0; const g = new Uint8ClampedArray(px.length/4);
-  for(let i=0,j=0;i<px.length;i+=4,j++){ const v = 0.299*px[i]+0.587*px[i+1]+0.114*px[i+2]; g[j]=v; if(v<min)min=v; if(v>max)max=v; }
-  const lo = min + (max-min)*0.08, hi = max - (max-min)*0.12, span = Math.max(1, hi-lo);
-  for(let i=0,j=0;i<px.length;i+=4,j++){ const v = Math.max(0, Math.min(255, (g[j]-lo)*255/span)); px[i]=px[i+1]=px[i+2]=v; }
-  ctx.putImageData(d,0,0);
-  const ocr = await toBlob(c, 0.92);
-  return {ocr, keep};
+  return {src:file, keep: await toBlob(k, 0.8)};
+}
+// Escala la foto para que el lado corto mida `width` px (el lector lee mejor a cierto tamaño de letra)
+async function scaled(file, width){
+  const img = await loadImage(file);
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const s = Math.min(3, width/Math.min(W,H), 4200/Math.max(W,H));
+  const c = document.createElement("canvas"); c.width = Math.round(W*s); c.height = Math.round(H*s);
+  c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+  return toBlob(c, 0.92);
 }
 function resetScan(){ pickedFiles=[]; $("#thumbs").innerHTML=""; $("#readBtn").disabled=true; $("#file").value=""; $("#prog").hidden = true; }
 
@@ -346,6 +358,17 @@ function getWorker(){
   })().catch(e => { workerP = null; throw e; });
 }
 
+// Intentos de lectura, del que mejor funcionó en recibos reales de Ross y Marshalls al siguiente.
+// Se queda con el que más cuadra con el subtotal impreso; si uno cuadra exacto, para ahí.
+const OCR_TRIES = [{width:1800, psm:"4"}, {width:1400, psm:"4"}, {width:1800, psm:"6"}];
+const itemsSum = d => Math.round(d.items.reduce((s,it)=>s+(Number(it.price)||0)*(Number(it.qty)||1),0)*100)/100;
+function rank(d){
+  const n = d.items.length;
+  if(d.subtotal == null) return [0, n];
+  return [-Math.abs(itemsSum(d) - d.subtotal), n];
+}
+const better = (a, b) => !b || a[0] > b[0] + 0.001 || (Math.abs(a[0]-b[0]) <= 0.001 && a[1] > b[1]);
+
 $("#readBtn").onclick = async () => {
   if(!pickedFiles.length) return;
   const btn = $("#readBtn"), st = $("#scanStatus");
@@ -353,23 +376,31 @@ $("#readBtn").onclick = async () => {
   try{
     setStatus(st, `<span class="spinner"></span>Preparando el lector…`);
     const w = await getWorker();
-    const texts = [];
-    for(let i=0;i<pickedFiles.length;i++){
-      progBase = i/pickedFiles.length; progSpan = 1/pickedFiles.length;
-      setStatus(st, `<span class="spinner"></span>Leyendo foto ${i+1} de ${pickedFiles.length}…`);
-      const { data } = await w.recognize(pickedFiles[i].ocr);
-      texts.push(data.text);
+    let best = null, bestScore = null, bestText = "";
+    const steps = OCR_TRIES.length * pickedFiles.length;
+    for(let t=0; t<OCR_TRIES.length; t++){
+      const tr = OCR_TRIES[t];
+      await w.setParameters({ tessedit_pageseg_mode: tr.psm });
+      const texts = [];
+      for(let i=0;i<pickedFiles.length;i++){
+        progBase = (t*pickedFiles.length + i)/steps; progSpan = 1/steps;
+        setStatus(st, `<span class="spinner"></span>Leyendo el recibo${t?` (intento ${t+1} de ${OCR_TRIES.length}, para mejorar la lectura)`:""}…`);
+        const { data } = await w.recognize(await scaled(pickedFiles[i].src, tr.width));
+        texts.push(data.text);
+      }
+      const text = texts.join("\n"), parsed = ReceiptParser.parse(text), sc = rank(parsed);
+      if(better(sc, bestScore)){ best = parsed; bestScore = sc; bestText = text; }
+      if(best.subtotal != null && best.items.length && Math.abs(itemsSum(best) - best.subtotal) < 0.01) break;
     }
     setProg(1);
-    lastOcrText = texts.join("\n");
-    const data = ReceiptParser.parse(lastOcrText);
+    lastOcrText = bestText;
+    const data = best;
     data.newPhotos = pickedFiles.map(p=>p.keep);
     if(!data.items.length){
       setStatus(st, "No encontré productos con código y precio. Revisa el texto leído, toma la foto más cerca y derecha, o usa el Plan B de abajo.", true);
-      openEditor(data, null, lastOcrText);
-      return;
+    } else {
+      setStatus(st, `Encontré ${data.items.length} producto${data.items.length===1?"":"s"}. Revisa antes de guardar.`);
     }
-    setStatus(st, `Encontré ${data.items.length} producto${data.items.length===1?"":"s"}. Revisa antes de guardar.`);
     openEditor(data, null, lastOcrText);
   }catch(e){
     setStatus(st, navigator.onLine === false
