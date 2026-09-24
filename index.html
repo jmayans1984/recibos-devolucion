@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Recibos de Devolución</title>
+<meta name="theme-color" content="#2347D6">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Recibos">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<style>
+:root{
+  --ground:#F3F5F8; --paper:#FFFFFF; --ink:#14171E; --muted:#5E6675; --line:#DDE2EA;
+  --accent:#2347D6; --accent-ink:#FFFFFF; --accent-soft:#E6ECFF;
+  --ok:#11795A; --ok-soft:#E1F4EC; --warn:#A45A00; --warn-soft:#FFF1DC; --bad:#B42318; --bad-soft:#FDE7E5;
+  --ross:#1F5FBF; --marshalls:#0B2A57;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --radius:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#0F1115; --paper:#181B22; --ink:#ECEEF3; --muted:#9AA2B1; --line:#2A2F3A;
+    --accent:#7C98FF; --accent-ink:#0B0E16; --accent-soft:#1E2748;
+    --ok:#4FD1A1; --ok-soft:#12302A; --warn:#F2B35B; --warn-soft:#33260F; --bad:#FF8A80; --bad-soft:#3A1917;
+    --ross:#6FA3F2; --marshalls:#9DB6E8;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#0F1115; --paper:#181B22; --ink:#ECEEF3; --muted:#9AA2B1; --line:#2A2F3A;
+  --accent:#7C98FF; --accent-ink:#0B0E16; --accent-soft:#1E2748;
+  --ok:#4FD1A1; --ok-soft:#12302A; --warn:#F2B35B; --warn-soft:#33260F; --bad:#FF8A80; --bad-soft:#3A1917;
+  --ross:#6FA3F2; --marshalls:#9DB6E8;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{margin:0;padding-top:env(safe-area-inset-top,0px)}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45;padding-inline:16px;padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
+body.typing nav.tabs{display:none}
+#pasteBtn{width:100%;flex:1 1 100%}
+.wrap{max-width:640px;margin:0 auto}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--ground);padding-block:14px 10px}
+.brand{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px}
+.brand h1{font-size:19px;margin:0;letter-spacing:-.01em}
+.brand .count{font-size:12px;color:var(--muted)}
+.search{position:relative}
+.search input{width:100%;height:56px;border-radius:14px;border:1.5px solid var(--line);background:var(--paper);padding:0 48px 0 16px;font-family:var(--mono);font-size:22px;letter-spacing:.04em}
+.search input::placeholder{font-family:var(--sans);font-size:16px;letter-spacing:0;color:var(--muted)}
+.search input:focus{border-color:var(--accent);outline:none}
+.search .clear{position:absolute;right:8px;top:8px;width:40px;height:40px;border:0;background:transparent;color:var(--muted);font-size:22px;border-radius:10px}
+.hint{font-size:12.5px;color:var(--muted);margin-top:6px}
+
+.banner{background:var(--warn-soft);color:var(--warn);border-radius:var(--radius);padding:10px 12px;font-size:13.5px;margin-block:8px}
+section[data-tab]{padding-block:8px 24px}
+.label{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;margin:14px 0 8px}
+
+/* result rows */
+.list{display:flex;flex-direction:column;gap:8px}
+.hit{display:grid;grid-template-columns:1fr auto;gap:4px 12px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;text-align:left;width:100%}
+.hit .code{font-family:var(--mono);font-size:16px;font-weight:700;letter-spacing:.02em}
+.hit .code mark{background:var(--accent-soft);color:var(--accent);border-radius:3px;padding:0 1px}
+.hit .price{font-family:var(--mono);font-weight:700;font-size:17px;text-align:right}
+.hit .name{grid-column:1/-1;font-size:14px;color:var(--ink)}
+.hit .meta{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+.chip.ross{background:color-mix(in srgb,var(--ross) 14%,transparent);color:var(--ross)}
+.chip.marshalls{background:color-mix(in srgb,var(--marshalls) 16%,transparent);color:var(--marshalls)}
+.chip.other{background:var(--line);color:var(--muted)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.bad{background:var(--bad-soft);color:var(--bad)}
+.chip.done{background:var(--line);color:var(--muted)}
+.empty{background:var(--paper);border:1px dashed var(--line);border-radius:var(--radius);padding:18px;color:var(--muted);font-size:14px}
+.demo-tag{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--warn)}
+
+/* receipt cards */
+.rcpt{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;width:100%;text-align:left}
+.rcpt .l{display:flex;flex-direction:column;gap:3px;min-width:0}
+.rcpt .t{font-weight:600}
+.rcpt .s{font-size:12.5px;color:var(--muted)}
+.rcpt .r{font-family:var(--mono);font-weight:700;white-space:nowrap}
+
+/* scan */
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;background:var(--paper);border:2px dashed var(--line);border-radius:16px;padding:28px 16px;cursor:pointer}
+.drop strong{font-size:17px}
+.drop span{color:var(--muted);font-size:13.5px}
+.drop svg{width:40px;height:40px;color:var(--accent)}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.thumbs img{width:72px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.btn{height:48px;border-radius:12px;border:0;padding:0 18px;font-weight:600;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:transparent;border:1.5px solid var(--line)}
+.btn.danger{background:var(--bad-soft);color:var(--bad)}
+.btn[disabled]{opacity:.5;cursor:default}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row .btn{flex:1 1 140px}
+.status{font-size:14px;color:var(--muted);margin-top:10px;min-height:20px}
+.status.err{color:var(--bad)}
+.spinner{width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:-3px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none}}
+
+.paste-how{font-size:13.5px;color:var(--muted);background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:4px 14px}
+.paste-how ul{margin:0 0 10px;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+#pasteBox{width:100%;margin-top:10px;border-radius:12px;border:1px solid var(--line);background:var(--paper);padding:10px 12px;font-family:var(--mono);font-size:13px;resize:vertical}
+
+/* form */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;color:var(--muted);font-weight:600}
+.field input,.field select,.item input{height:42px;border-radius:10px;border:1px solid var(--line);background:var(--paper);padding:0 10px;min-width:0;width:100%}
+.items{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.item{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:10px;display:grid;grid-template-columns:1fr 92px 36px;gap:6px}
+.item .n{grid-column:1/3}
+.item .c{font-family:var(--mono)}
+.item .p{font-family:var(--mono);text-align:right}
+.item .x{grid-row:1/3;grid-column:3;border:0;background:transparent;color:var(--muted);font-size:20px;border-radius:8px}
+
+/* sheet */
+.sheet{position:fixed;inset:0;z-index:20;background:rgba(10,12,18,.5);display:flex;align-items:flex-end;justify-content:center}
+.sheet .panel{background:var(--ground);width:100%;max-width:640px;max-height:92%;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px))}
+.sheet .bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.sheet h2{font-size:18px;margin:0}
+.x-btn{width:40px;height:40px;border:0;border-radius:10px;background:var(--paper);font-size:20px}
+.photos{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.photos img{height:260px;max-width:none;border-radius:10px;border:1px solid var(--line);background:var(--paper)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-family:var(--mono);text-align:right}
+.lines{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.line{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:10px 14px;border-top:1px solid var(--line)}
+.line:first-child{border-top:0}
+.line.match{background:var(--accent-soft)}
+.line.returned .lc,.line.returned .ln,.line.returned .lp{text-decoration:line-through;color:var(--muted)}
+.lc{font-family:var(--mono);font-weight:700}
+.lp{font-family:var(--mono);font-weight:700;text-align:right}
+.ln{font-size:13.5px}
+.line .tog{justify-self:end;border:1px solid var(--line);background:transparent;border-radius:999px;height:28px;padding:0 10px;font-size:12px}
+.line .tog.on{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.copy{border:0;background:transparent;color:var(--accent);font-size:12px;padding:0 4px;height:24px}
+
+/* tabs */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--paper);border-top:1px solid var(--line);display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom,0px)}
+nav.tabs .in{display:grid;grid-template-columns:repeat(3,1fr);width:100%;max-width:640px}
+nav.tabs button{height:64px;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;color:var(--muted);font-weight:600}
+nav.tabs button svg{width:22px;height:22px}
+nav.tabs button[aria-selected="true"]{color:var(--accent)}
+</style>
+<style>
+.progress{height:6px;background:var(--line);border-radius:999px;overflow:hidden;margin-top:10px}
+.progress > i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.backup{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;font-size:13.5px;color:var(--muted)}
+.backup p{margin:0 0 10px}
+details.raw{margin-top:12px;font-size:13px;color:var(--muted)}
+details.raw pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:240px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><h1>Recibos de Devolución</h1><span class="count" id="count"></span></div>
+    <div class="search">
+      <input id="q" type="search" inputmode="numeric" autocomplete="off" placeholder="Digita el código del producto" aria-label="Buscar por código">
+      <button class="clear" id="qClear" aria-label="Borrar búsqueda" hidden>×</button>
+    </div>
+    <div class="hint">Busca por código (o parte de él). También funciona con el nombre.</div>
+  </header>
+
+  <section data-tab="buscar" id="tabBuscar">
+    <div id="results" class="list"></div>
+  </section>
+
+  <section data-tab="escanear" id="tabEscanear" hidden>
+    <div class="label">Nuevo recibo</div>
+    <label class="drop" for="file">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+      <strong>Tomar o subir foto del recibo</strong>
+      <span>Recibo plano, con buena luz y sin sombras. Si es largo, toma varias fotos (arriba, medio, abajo).</span>
+    </label>
+    <input id="file" type="file" accept="image/*" capture="environment" multiple hidden>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="readBtn" disabled>Leer recibo</button>
+      <button class="btn ghost" id="manualBtn">Escribir a mano</button>
+    </div>
+    <div class="progress" id="prog" hidden><i></i></div>
+    <div class="status" id="scanStatus"></div>
+
+    <div class="label" style="margin-top:22px">Plan B · pegar el texto del recibo</div>
+    <div class="paste-how">
+      <p>El lector de texto de tu celular suele leer mejor. Copia el texto de la foto y pégalo abajo:</p>
+      <ul>
+        <li><b>iPhone:</b> abre la foto en Fotos, mantén el dedo sobre el texto, toca <i>Seleccionar todo</i> y luego <i>Copiar</i>.</li>
+        <li><b>Android:</b> abre la foto en Google Fotos, toca <i>Lens</i> (o <i>Copiar texto</i>), luego <i>Seleccionar todo</i> y <i>Copiar</i>.</li>
+      </ul>
+    </div>
+    <textarea id="pasteBox" rows="6" placeholder="Pega aquí el texto del recibo…" aria-label="Texto del recibo"></textarea>
+    <div class="row" style="margin-top:10px"><button class="btn primary" id="pasteBtn">Leer texto</button></div>
+    <div class="status" id="pasteStatus"></div>
+  </section>
+
+  <section data-tab="recibos" id="tabRecibos" hidden>
+    <div id="receiptList" class="list"></div>
+    <div class="label" style="margin-top:22px">Respaldo</div>
+    <div class="backup">
+      <p>Tus recibos se guardan solo en este celular. Haz un respaldo de vez en cuando (por ejemplo, guárdalo en Google Drive o iCloud) para no perderlos si cambias de teléfono o borras los datos del navegador.</p>
+      <div class="row">
+        <button class="btn ghost" id="exportBtn">Guardar respaldo</button>
+        <button class="btn ghost" id="importBtn">Cargar respaldo</button>
+      </div>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+      <div class="status" id="backupStatus"></div>
+    </div>
+  </section>
+</div>
+
+<nav class="tabs" aria-label="Secciones">
+  <div class="in" role="tablist">
+    <button role="tab" data-go="buscar" aria-selected="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4-4"/></svg>Buscar</button>
+    <button role="tab" data-go="escanear" aria-selected="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Escanear</button>
+    <button role="tab" data-go="recibos" aria-selected="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>Recibos</button>
+  </div>
+</nav>
+
+<div class="sheet" id="sheet" hidden><div class="panel" id="panel"></div></div>
+
+<script src="parser.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
