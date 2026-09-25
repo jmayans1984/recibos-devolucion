@@ -54,7 +54,22 @@
     else if (/T\.?\s?J\.?\s?MAXX/i.test(all)) out.store = "TJ Maxx";
     else if (/HOME\s?GOODS/i.test(all)) out.store = "HomeGoods";
 
-    const dm = all.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})\b/);
+    // La fecha real casi siempre va en una línea con la palabra "Date"; se busca esa primero,
+    // porque un número interno (Tender Detail #, número de cuenta, código de barras) puede
+    // parecer una fecha (ej. "1-01-4-08-025914" se leería como "01-4-08") y aparecer antes en
+    // el recibo, así que buscarla "por donde caiga" en todo el texto agarra ese número en vez
+    // de la fecha real.
+    let dm = null;
+    const dateLine = lines.find(l => /\bDATE\b\s*:?\s*\d/i.test(l));
+    if (dateLine) dm = dateLine.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+    if (!dm) {
+      const NOT_A_DATE = /TENDER|DETAIL|AUTH|ACCT|ACCOUNT|CARD|APPROV|\bREF\b|RECEIPT\s*#|CHIP|\bAID\b|\bTVR\b|\bTSI\b/i;
+      for (const l of lines) {
+        if (NOT_A_DATE.test(l)) continue;
+        const m = l.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})\b/);
+        if (m) { dm = m; break; }
+      }
+    }
     if (dm) {
       let [, m, d, y] = dm; y = y.length === 2 ? "20" + y : y;
       if (+m >= 1 && +m <= 12 && +d >= 1 && +d <= 31) out.date = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
