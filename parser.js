@@ -100,10 +100,49 @@
         pendingCode = null;
       }
     }
-    // Si no se leyó el logo: los códigos de Ross son de 12 dígitos y empiezan con 400
-    if (out.store === "Otra" && out.items.length && out.items.filter(it => /^400\d{9}$/.test(it.code)).length >= out.items.length / 2) out.store = "Ross";
+    fixStore(out);
     return out;
   }
 
-  global.ReceiptParser = { parse };
+  // Si no se leyó el logo: los códigos de Ross son de 12 dígitos y empiezan con 400
+  function fixStore(out) {
+    if (out.store === "Otra" && out.items.length && out.items.filter(it => /^400\d{9}$/.test(it.code)).length >= out.items.length / 2) out.store = "Ross";
+  }
+
+  // Identifica un producto por su código + precio, para detectar líneas repetidas
+  // cuando dos fotos de un recibo largo se solapan (la parte de abajo de una foto
+  // vuelve a salir arriba de la siguiente).
+  const itemKey = it => String(it.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "") + "|" + (it.price == null ? "" : Number(it.price).toFixed(2));
+
+  // Cuántos productos del final de `have` se repiten al principio de `next` (en el
+  // mismo orden). Solo recorta esa coincidencia exacta en el borde, así que un
+  // producto comprado varias veces en distintas partes del recibo no se pierde.
+  function overlapCount(have, next) {
+    const max = Math.min(have.length, next.length);
+    for (let k = max; k > 0; k--) {
+      let ok = true;
+      for (let i = 0; i < k; i++) if (itemKey(have[have.length - k + i]) !== itemKey(next[i])) { ok = false; break; }
+      if (ok) return k;
+    }
+    return 0;
+  }
+
+  // Une lo leído de varias fotos del MISMO recibo (en el orden en que se tomaron),
+  // quitando los productos duplicados por el solape entre una foto y la siguiente.
+  function mergeParsed(parts) {
+    parts = parts.filter(Boolean);
+    if (parts.length <= 1) return parts[0] || parse("");
+    const out = { store: "Otra", storeNumber: null, date: null, time: null, transaction: null, subtotal: null, tax: null, total: null, payment: null, items: [] };
+    for (const p of parts) {
+      for (const k of ["storeNumber", "date", "time", "transaction", "payment"]) if (out[k] == null && p[k] != null) out[k] = p[k];
+      for (const k of ["subtotal", "tax", "total"]) if (p[k] != null) out[k] = p[k]; // el total real suele estar en la última foto
+      if (p.store && p.store !== "Otra") out.store = p.store;
+      const skip = overlapCount(out.items, p.items);
+      out.items.push(...p.items.slice(skip));
+    }
+    fixStore(out);
+    return out;
+  }
+
+  global.ReceiptParser = { parse, mergeParsed };
 })(typeof window !== "undefined" ? window : globalThis);

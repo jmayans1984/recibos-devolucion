@@ -177,17 +177,39 @@ nav.tabs button[aria-selected="true"]{color:var(--accent)}
 .account b{color:var(--ink);font-weight:600;word-break:break-all}
 details.raw{margin-top:12px;font-size:13px;color:var(--muted)}
 details.raw pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:240px;overflow:auto}
+
+/* número de recibo escrito a mano en el papel */
+.recnum{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;font-family:var(--mono);font-weight:700;font-size:12px;letter-spacing:.02em;background:var(--accent-soft);color:var(--accent)}
+.recnum.big{height:auto;padding:8px 14px;font-size:22px;border-radius:10px}
+
+/* miniaturas con botón de quitar */
+.thumbs{position:relative}
+.thumb{position:relative}
+.thumb .rm{position:absolute;top:-7px;right:-7px;width:24px;height:24px;border-radius:50%;border:2px solid var(--ground);background:var(--bad);color:#fff;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
+.thumb .addMore{width:72px;height:96px;border-radius:8px;border:2px dashed var(--line);background:transparent;color:var(--muted);font-size:26px;display:flex;align-items:center;justify-content:center}
+
+/* código de barras: captura y vista de pantalla completa para mostrar en la tienda */
+.barcodeBox{display:flex;gap:10px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
+.barcodeBox img{width:96px;height:64px;object-fit:contain;border-radius:8px;border:1px solid var(--line);background:#fff}
+.barcodeBox .info{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.barcodeAdd{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--paper);border:2px dashed var(--line);border-radius:var(--radius);padding:16px;color:var(--muted);font-size:14px;text-align:center}
+.barcodeFull{position:fixed;inset:0;z-index:40;background:#fff;display:none;align-items:center;justify-content:center;padding:16px}
+.barcodeFull.open{display:flex}
+.barcodeFull img{max-width:100%;max-height:100%}
+.barcodeFull .x-btn{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:12px;background:#eee;color:#111}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
     <div class="brand"><h1>Recibos de Devolución</h1><span class="count" id="count"></span></div>
-    <div class="search">
-      <input id="q" type="search" inputmode="numeric" autocomplete="off" placeholder="Digita el código del producto" aria-label="Buscar por código">
-      <button class="clear" id="qClear" aria-label="Borrar búsqueda" hidden>×</button>
+    <div id="searchBox">
+      <div class="search">
+        <input id="q" type="search" inputmode="numeric" autocomplete="off" placeholder="Digita el código del producto o el # de recibo" aria-label="Buscar por código o número de recibo">
+        <button class="clear" id="qClear" aria-label="Borrar búsqueda" hidden>×</button>
+      </div>
+      <div class="hint">Busca por código (o parte de él), por nombre o por el número de recibo.</div>
     </div>
-    <div class="hint">Busca por código (o parte de él). También funciona con el nombre.</div>
   </header>
 
   <section data-tab="buscar" id="tabBuscar">
@@ -268,9 +290,14 @@ details.raw pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;back
 
 <div class="sheet" id="sheet"><div class="panel" id="panel"></div></div>
 
+<div class="barcodeFull" id="barcodeFull">
+  <button class="x-btn" id="bcClose" aria-label="Cerrar">×</button>
+  <img id="bcImg" alt="Código de barras del recibo">
+</div>
+
 <script>window.cloudReady = new Promise(r => { window._cloudResolve = r; });</script>
-<script type="module" src="cloud.js?v=6"></script>
-<script src="parser.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script type="module" src="cloud.js?v=7"></script>
+<script src="parser.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

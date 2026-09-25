@@ -80,12 +80,15 @@ function highlight(code, q){
   return esc(c.slice(0,s)) + "<mark>" + esc(c.slice(s,e)) + "</mark>" + esc(c.slice(e));
 }
 function sorted(list){ return [...list].sort((a,b)=>(b.date||"").localeCompare(a.date||"") || (b.createdAt||"").localeCompare(a.createdAt||"")); }
+// El número que se anota a lápiz en el papel del recibo, para encontrarlo rápido después.
+function nextReceiptNumber(){ return receipts.reduce((m,r)=>Math.max(m, Number(r.number)||0), 0) + 1; }
 function setStatus(el, text, err){ el.className = "status" + (err ? " err" : ""); el.innerHTML = text; }
 
 /* ---------- pestañas ---------- */
 function go(tab){
   document.querySelectorAll("section[data-tab]").forEach(s => s.hidden = s.dataset.tab !== tab);
   document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.go===tab)));
+  $("#searchBox").hidden = tab === "escanear"; // en Escanear solo se captura el recibo, no se busca
   try{ localStorage.setItem("tab", tab); }catch(e){}
 }
 document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => go(b.dataset.go));
@@ -110,6 +113,8 @@ function renderResults(){
     bindReceiptRows(out); return;
   }
   const words = raw.toLowerCase().split(/\s+/).filter(Boolean);
+  // el número que se anotó a lápiz en el papel: búsqueda exacta o por si empieza igual
+  const numHits = /^\d{1,6}$/.test(raw) ? src.filter(r => r.number != null && String(r.number).startsWith(raw)) : [];
   const hits = [];
   for(const r of src){
     (r.items||[]).forEach((it, idx) => {
@@ -119,8 +124,10 @@ function renderResults(){
     });
   }
   hits.sort((a,b)=>(b.r.date||"").localeCompare(a.r.date||""));
-  if(!hits.length){ out.innerHTML = `<div class="empty">Ningún producto con “${esc(raw)}”. Revisa el código o busca solo los últimos 4 a 6 dígitos.</div>`; return; }
-  out.innerHTML = `<div class="label">${hits.length} coincidencia${hits.length>1?"s":""}${receipts.length?"":" · ejemplo"}</div>` + hits.map(({r,it,idx}) => `
+  if(!hits.length && !numHits.length){ out.innerHTML = `<div class="empty">Ningún producto con “${esc(raw)}”. Revisa el código o busca solo los últimos 4 a 6 dígitos.</div>`; return; }
+  let html = "";
+  if(numHits.length) html += `<div class="label">Recibo${numHits.length>1?"s":""} con ese número</div>` + numHits.map(receiptRow).join("");
+  html += hits.length ? `<div class="label">${hits.length} coincidencia${hits.length>1?"s":""}${receipts.length?"":" · ejemplo"}</div>` + hits.map(({r,it,idx}) => `
     <button class="hit" data-r="${esc(r.id)}" data-i="${idx}">
       <span class="code">${highlight(it.code, q)}</span>
       <span class="price">${money(it.price)}</span>
@@ -130,7 +137,9 @@ function renderResults(){
         <span>${fmtDate(r.date)}</span>
         ${it.returned?`<span class="chip done">Ya devuelto</span>`:deadlineChip(r.date)}
       </span>
-    </button>`).join("");
+    </button>`).join("") : "";
+  out.innerHTML = html;
+  bindReceiptRows(out);
   out.querySelectorAll(".hit").forEach(b => b.onclick = () => openReceipt(b.dataset.r, Number(b.dataset.i)));
 }
 $("#q").addEventListener("input", renderResults);
@@ -140,7 +149,7 @@ $("#qClear").onclick = () => { $("#q").value=""; renderResults(); $("#q").focus(
 function receiptRow(r){
   const n = (r.items||[]).length;
   return `<button class="rcpt" data-r="${esc(r.id)}">
-    <span class="l"><span class="t"><span class="chip ${storeClass(r.store)}">${esc(r.store||"Tienda")}</span> ${fmtDate(r.date)}</span>
+    <span class="l"><span class="t">${r.number!=null?`<span class="recnum">#${r.number}</span> `:""}<span class="chip ${storeClass(r.store)}">${esc(r.store||"Tienda")}</span> ${fmtDate(r.date)}</span>
     <span class="s">${n} producto${n===1?"":"s"}${r.storeNumber?" · tienda #"+esc(r.storeNumber):""} ${deadlineChip(r.date)}</span></span>
     <span class="r">${money(r.total)}</span></button>`;
 }
@@ -163,14 +172,22 @@ function closeUrls(){ sheetUrls.forEach(u => URL.revokeObjectURL(u)); sheetUrls 
 function closeSheet(){ $("#sheet").classList.remove("open"); $("#panel").innerHTML = ""; closeUrls(); }
 $("#sheet").addEventListener("click", e => { if(e.target.id==="sheet") closeSheet(); });
 
+// Vista de pantalla completa, con fondo blanco, para mostrar el código de barras al cajero.
+function openBarcodeFull(url){ $("#bcImg").src = url; $("#barcodeFull").classList.add("open"); }
+function closeBarcodeFull(){ $("#barcodeFull").classList.remove("open"); $("#bcImg").src = ""; }
+$("#bcClose").onclick = closeBarcodeFull;
+$("#barcodeFull").addEventListener("click", e => { if(e.target.id==="barcodeFull") closeBarcodeFull(); });
+
 async function openReceipt(id, matchIdx){
   const r = receipts.find(x=>x.id===id) || DEMO.find(x=>x.id===id); if(!r) return;
   const q = key($("#q").value);
   const due = r.date ? fmtDate(new Date(new Date(r.date+"T12:00:00").getTime()+RETURN_DAYS*864e5).toISOString().slice(0,10)) : "—";
   openSheet(`
-    <div class="bar"><h2><span class="chip ${storeClass(r.store)}">${esc(r.store||"Tienda")}</span> ${fmtDate(r.date)}</h2><button class="x-btn" data-close aria-label="Cerrar">×</button></div>
+    <div class="bar"><h2>${r.number!=null?`<span class="recnum big">#${r.number}</span> `:""}<span class="chip ${storeClass(r.store)}">${esc(r.store||"Tienda")}</span> ${fmtDate(r.date)}</h2><button class="x-btn" data-close aria-label="Cerrar">×</button></div>
     ${r.demo?`<p class="demo-tag">Recibo de ejemplo, no está guardado</p>`:""}
+    ${r.number!=null?`<p class="hint" style="margin-top:0">Anota <b class="mono">#${r.number}</b> con lápiz en el papel del recibo para encontrarlo rápido después.</p>`:""}
     <div class="photos" id="photos"></div>
+    ${r.barcodePhoto?`<div class="row"><button class="btn ghost" data-showbarcode>Mostrar código de barras</button></div>`:""}
     <div class="label">Productos</div>
     <div class="lines">${(r.items||[]).map((it,i)=>`
       <div class="line ${i===matchIdx || (q.length>=2 && (it.codeKey||"").includes(q)) ? "match":""} ${it.returned?"returned":""}">
@@ -206,6 +223,13 @@ async function openReceipt(id, matchIdx){
     try{ await navigator.clipboard.writeText(b.dataset.copy); b.textContent="copiado"; }catch(e){ b.textContent="no se pudo copiar"; }
     setTimeout(()=>b.textContent="copiar",1500);
   });
+  const showBc = p.querySelector("[data-showbarcode]");
+  if(showBc) showBc.onclick = async () => {
+    const blob = await store.getPhoto(r.barcodePhoto).catch(()=>null);
+    if(!blob){ showBc.textContent = "No se encontró la foto guardada."; return; }
+    const u = URL.createObjectURL(blob); sheetUrls.push(u);
+    openBarcodeFull(u);
+  };
   p.querySelectorAll("[data-tog]").forEach(b => b.onclick = async () => {
     const i = Number(b.dataset.tog);
     r.items[i].returned = !r.items[i].returned;
@@ -216,6 +240,7 @@ async function openReceipt(id, matchIdx){
     if(del.dataset.armed!=="1"){ del.dataset.armed="1"; del.textContent="Toca otra vez para borrar"; return; }
     await store.del(r.id);
     for(const pid of (r.photos||[])) await store.delPhoto(pid).catch(()=>{});
+    if(r.barcodePhoto) await store.delPhoto(r.barcodePhoto).catch(()=>{});
     closeSheet(); await reload();
   };
   const ed = p.querySelector("[data-edit]");
@@ -247,6 +272,12 @@ function openEditor(data, existingId, rawText){
     <div class="items" id="items">${data.items.map(itemHtml).join("")}</div>
     <div class="status" id="sumCheck"></div>
     <div class="row" style="margin-top:10px"><button class="btn ghost" id="addItem">+ Agregar producto</button></div>
+
+    <div class="label" style="margin-top:22px">Código de barras (opcional)</div>
+    <p class="hint" style="margin-top:0">Para mostrarlo en la tienda al hacer la devolución, sin buscar todo el recibo.</p>
+    <div id="barcodeWrap"></div>
+    <input id="barcodeFile" type="file" accept="image/*" capture="environment" hidden>
+
     <div class="row" style="margin-top:14px"><button class="btn primary" id="saveBtn">Guardar recibo</button></div>
     <div class="status" id="saveStatus"></div>
     ${rawText?`<details class="raw"><summary>Ver el texto que se leyó de la foto</summary><pre>${esc(rawText)}</pre></details>`:""}
@@ -277,6 +308,36 @@ function openEditor(data, existingId, rawText){
   sumCheck();
   p.querySelector("[data-close]").onclick = closeSheet;
   $("#addItem").onclick = () => { collect(); data.items.push({code:"",name:"",price:"",qty:1}); rerender(); $("#ic"+(data.items.length-1)).focus(); };
+
+  // ---- foto del código de barras (por separado de las fotos del recibo) ----
+  let barcodeBlob = null, barcodeExistingId = data.barcodePhoto || null, barcodeRemoved = false;
+  function renderBarcode(){
+    const wrap = $("#barcodeWrap"); if(!wrap) return;
+    if(barcodeBlob){
+      wrap.innerHTML = `<div class="barcodeBox"><img src="${URL.createObjectURL(barcodeBlob)}" alt="Código de barras"><span class="info">Se guardará con el recibo.</span><button class="btn ghost" id="bcRemove" style="height:36px">Quitar</button></div>`;
+      $("#bcRemove").onclick = () => { barcodeBlob = null; renderBarcode(); };
+    } else if(barcodeExistingId && !barcodeRemoved){
+      wrap.innerHTML = `<div class="barcodeBox"><span class="mono" style="color:var(--muted)">Cargando…</span></div>`;
+      const myId = barcodeExistingId;
+      store.getPhoto(myId).then(blob => {
+        if(barcodeExistingId !== myId || barcodeRemoved || barcodeBlob) return; // se cambió mientras cargaba
+        wrap.innerHTML = blob
+          ? `<div class="barcodeBox"><img src="${URL.createObjectURL(blob)}" alt="Código de barras"><span class="info">Ya guardado con este recibo.</span><button class="btn ghost" id="bcRemove" style="height:36px">Quitar</button></div>`
+          : `<label class="barcodeAdd" for="barcodeFile">+ Agregar foto del código de barras</label>`;
+        if($("#bcRemove")) $("#bcRemove").onclick = () => { barcodeRemoved = true; renderBarcode(); };
+      }).catch(() => { wrap.innerHTML = `<label class="barcodeAdd" for="barcodeFile">+ Agregar foto del código de barras</label>`; });
+    } else {
+      wrap.innerHTML = `<label class="barcodeAdd" for="barcodeFile">+ Agregar foto del código de barras</label>`;
+    }
+  }
+  renderBarcode();
+  $("#barcodeFile").addEventListener("change", async e => {
+    const f = e.target.files[0]; if(!f) return;
+    try{ barcodeBlob = (await prepare(f)).keep; barcodeRemoved = false; renderBarcode(); }
+    catch(err){ setStatus($("#saveStatus"), "Esa foto no se pudo abrir. Prueba con otra.", true); }
+    e.target.value = "";
+  });
+
   $("#saveBtn").onclick = async () => {
     collect();
     const items = data.items.filter(it => it.code || it.name).map(it => ({
@@ -290,11 +351,16 @@ function openEditor(data, existingId, rawText){
       const id = existingId || uid();
       const photoIds = [...(data.photos||[])];
       for(const b of (data.newPhotos||[])){ const pid = uid(); await store.putPhoto(pid, b); photoIds.push(pid); }
+      let barcodePhoto = barcodeExistingId;
+      if(barcodeBlob){ barcodePhoto = uid(); await store.putPhoto(barcodePhoto, barcodeBlob); if(barcodeExistingId) await store.delPhoto(barcodeExistingId).catch(()=>{}); }
+      else if(barcodeRemoved){ if(barcodeExistingId) await store.delPhoto(barcodeExistingId).catch(()=>{}); barcodePhoto = null; }
+      // el número que se anota a lápiz en el papel: se asigna solo una vez, al primer intento de guardar
+      if(!existingId && data.number == null) data.number = nextReceiptNumber();
       await store.put({
-        id, store:$("#fStore").value, date:$("#fDate").value||null, storeNumber:$("#fNum").value.trim()||null,
+        id, number: data.number ?? null, store:$("#fStore").value, date:$("#fDate").value||null, storeNumber:$("#fNum").value.trim()||null,
         total: $("#fTotal").value.trim()==="" ? null : Number($("#fTotal").value.replace(/[^0-9.\-]/g,"")),
         time:data.time??null, transaction:data.transaction??null, subtotal:data.subtotal??null, tax:data.tax??null, payment:data.payment??null,
-        photos:photoIds, items, createdAt:data.createdAt||new Date().toISOString()
+        photos:photoIds, barcodePhoto, items, createdAt:data.createdAt||new Date().toISOString()
       });
       closeSheet(); resetScan(); $("#pasteBox").value = "";
       $("#q").value = ""; go("buscar"); await reload();
@@ -333,7 +399,19 @@ async function scaled(file, width){
   c.getContext("2d").drawImage(img,0,0,c.width,c.height);
   return toBlob(c, 0.92);
 }
-function resetScan(){ pickedFiles=[]; $("#thumbs").innerHTML=""; $("#readBtn").disabled=true; $("#file").value=""; $("#prog").hidden = true; }
+function resetScan(){ pickedFiles=[]; renderThumbs(); $("#readBtn").disabled=true; $("#file").value=""; $("#prog").hidden = true; }
+// Miniaturas de las fotos del recibo, cada una con su botón para quitarla, y al final
+// un botón para agregar otra sin perder las que ya se tomaron.
+function renderThumbs(){
+  $("#thumbs").innerHTML = pickedFiles.map((p,i)=>`<span class="thumb"><img src="${URL.createObjectURL(p.keep)}" alt="Foto ${i+1} del recibo"><button class="rm" data-rmphoto="${i}" aria-label="Quitar esta foto">×</button></span>`).join("")
+    + `<label class="thumb" for="file"><span class="addMore" aria-label="Agregar otra foto">+</span></label>`;
+  $("#thumbs").querySelectorAll("[data-rmphoto]").forEach(b => b.onclick = () => {
+    pickedFiles.splice(Number(b.dataset.rmphoto), 1);
+    renderThumbs();
+    $("#readBtn").disabled = !pickedFiles.length;
+    if(!pickedFiles.length) setStatus($("#scanStatus"), "");
+  });
+}
 
 $("#file").addEventListener("change", async e => {
   const files = [...e.target.files]; if(!files.length) return;
@@ -341,7 +419,7 @@ $("#file").addEventListener("change", async e => {
   for(const f of files){
     try{ pickedFiles.push(await prepare(f)); }catch(err){ setStatus($("#scanStatus"), "Una foto no se pudo abrir. Prueba con otra.", true); }
   }
-  $("#thumbs").innerHTML = pickedFiles.map(p=>`<img src="${URL.createObjectURL(p.keep)}" alt="Foto seleccionada">`).join("");
+  renderThumbs();
   $("#readBtn").disabled = !pickedFiles.length;
   if(pickedFiles.length) setStatus($("#scanStatus"), `${pickedFiles.length} foto${pickedFiles.length>1?"s":""} lista${pickedFiles.length>1?"s":""}. Toca “Leer recibo”.`);
   $("#file").value="";
@@ -390,14 +468,16 @@ $("#readBtn").onclick = async () => {
     for(let t=0; t<OCR_TRIES.length; t++){
       const tr = OCR_TRIES[t];
       await w.setParameters({ tessedit_pageseg_mode: tr.psm });
-      const texts = [];
+      const texts = [], parts = [];
       for(let i=0;i<pickedFiles.length;i++){
         progBase = (t*pickedFiles.length + i)/steps; progSpan = 1/steps;
-        setStatus(st, `<span class="spinner"></span>Leyendo el recibo${t?` (intento ${t+1} de ${OCR_TRIES.length}, para mejorar la lectura)`:""}…`);
+        setStatus(st, `<span class="spinner"></span>Leyendo el recibo${t?` (intento ${t+1} de ${OCR_TRIES.length}, para mejorar la lectura)`:""}${pickedFiles.length>1?` — foto ${i+1} de ${pickedFiles.length}`:""}…`);
         const { data } = await w.recognize(await scaled(pickedFiles[i].src, tr.width));
-        texts.push(data.text);
+        texts.push(data.text); parts.push(ReceiptParser.parse(data.text));
       }
-      const text = texts.join("\n"), parsed = ReceiptParser.parse(text), sc = rank(parsed);
+      // se combinan por separado (no todo el texto junto) para poder quitar los productos
+      // que se repiten cuando dos fotos de un recibo largo se solapan
+      const parsed = ReceiptParser.mergeParsed(parts), text = texts.join("\n\n--- foto siguiente ---\n\n"), sc = rank(parsed);
       if(better(sc, bestScore)){ best = parsed; bestScore = sc; bestText = text; }
       if(best.subtotal != null && best.items.length && Math.abs(itemsSum(best) - best.subtotal) < 0.01) break;
     }
@@ -435,7 +515,7 @@ $("#exportBtn").onclick = async () => {
   const st = $("#backupStatus");
   setStatus(st, `<span class="spinner"></span>Preparando respaldo…`);
   const photos = {};
-  for(const r of receipts) for(const pid of (r.photos||[])){ const b = await store.getPhoto(pid).catch(()=>null); if(b) photos[pid] = await blobToDataURL(b); }
+  for(const r of receipts) for(const pid of [...(r.photos||[]), r.barcodePhoto].filter(Boolean)){ const b = await store.getPhoto(pid).catch(()=>null); if(b) photos[pid] = await blobToDataURL(b); }
   const json = JSON.stringify({app:"recibos-devolucion", version:1, exportedAt:new Date().toISOString(), receipts, photos});
   const name = `recibos-respaldo-${new Date().toISOString().slice(0,10)}.json`;
   const file = new File([json], name, {type:"application/json"});
@@ -507,10 +587,11 @@ async function migrateLocal(){
   const st = $("#backupStatus");
   setStatus(st, `<span class="spinner"></span>Pasando ${local.length} recibo${local.length===1?"":"s"} de este celular a la nube…`);
   for(const r of local){
-    for(const pid of (r.photos||[])){ const b = await localStore.getPhoto(pid).catch(()=>null); if(b) await store.putPhoto(pid, b); }
+    const pids = [...(r.photos||[]), r.barcodePhoto].filter(Boolean);
+    for(const pid of pids){ const b = await localStore.getPhoto(pid).catch(()=>null); if(b) await store.putPhoto(pid, b); }
     await store.put(r);
     await localStore.del(r.id);
-    for(const pid of (r.photos||[])) await localStore.delPhoto(pid).catch(()=>{});
+    for(const pid of pids) await localStore.delPhoto(pid).catch(()=>{});
   }
   setStatus(st, `Listo: ${local.length} recibo${local.length===1?"":"s"} de este celular ahora están en la nube.`);
 }
