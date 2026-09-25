@@ -1,7 +1,7 @@
 // Conexión con Firebase: inicio de sesión (correo y contraseña) y base de datos Firestore.
 // Cada usuario solo ve lo suyo: users/{uid}/receipts y users/{uid}/photos.
 // Las fotos se guardan comprimidas dentro de Firestore para no necesitar el plan de pago de Storage.
-import { FIREBASE_CONFIG } from "./firebase-config.js?v=10";
+import { FIREBASE_CONFIG } from "./firebase-config.js?v=11";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,

@@ -203,6 +203,7 @@ async function openReceipt(id, matchIdx){
       <dt>Fecha / hora</dt><dd>${esc(r.date||"—")} ${esc(r.time||"")}</dd>
       <dt>Transacción</dt><dd>${esc(r.transaction||"—")}</dd>
       <dt>Pago</dt><dd>${esc(r.payment||"—")}</dd>
+      ${r.cardName?`<dt>Pagado con</dt><dd>${esc(r.cardName)}</dd>`:""}
       <dt>Subtotal</dt><dd>${money(r.subtotal)}</dd>
       <dt>Impuesto</dt><dd>${money(r.tax)}</dd>
       <dt>Total</dt><dd><b>${money(r.total)}</b></dd>
@@ -267,7 +268,10 @@ function openEditor(data, existingId, rawText){
       <div class="field"><label for="fDate">Fecha</label><input id="fDate" type="date" value="${esc(data.date||"")}"></div>
       <div class="field"><label for="fNum">Tienda #</label><input id="fNum" value="${esc(data.storeNumber||"")}"></div>
       <div class="field"><label for="fTotal">Total</label><input id="fTotal" inputmode="decimal" value="${data.total ?? ""}"></div>
+      <div class="field"><label for="fCardName">Pagado con (nombre)</label><input id="fCardName" placeholder="Ej. Tarjeta de Juan" value="${esc(data.cardName||"")}"></div>
+      <div class="field"><label for="fPayment">Tarjeta (solo los últimos 4)</label><input id="fPayment" inputmode="numeric" placeholder="Ej. VISA 1234" value="${esc(data.payment||"")}"></div>
     </div>
+    <p class="hint" id="cardWarn" style="margin-top:-6px" hidden>Por tu seguridad, escribe solo los últimos 4 dígitos (así los imprime el recibo) — nunca el número completo de la tarjeta.</p>
     <div class="label">Productos (<span id="nItems">${data.items.length}</span>)</div>
     <div class="items" id="items">${data.items.map(itemHtml).join("")}</div>
     <div class="status" id="sumCheck"></div>
@@ -308,6 +312,17 @@ function openEditor(data, existingId, rawText){
   sumCheck();
   p.querySelector("[data-close]").onclick = closeSheet;
   $("#addItem").onclick = () => { collect(); data.items.push({code:"",name:"",price:"",qty:1}); rerender(); $("#ic"+(data.items.length-1)).focus(); };
+
+  // Por seguridad nunca se guarda el número completo de una tarjeta: un recibo real solo
+  // llega a imprimir los últimos 4 dígitos, así que si se escribe o pega una fila más larga
+  // de dígitos, se recorta sola a esos últimos 4.
+  const CARD_RUN = /\d[\d \-]{11,}\d/;
+  const stripCardNumber = el => { const m = el.value.match(CARD_RUN); if(m) el.value = el.value.slice(0, m.index) + m[0].replace(/\D/g,"").slice(-4) + el.value.slice(m.index + m[0].length); return !!m; };
+  $("#fPayment").addEventListener("input", () => {
+    const el = $("#fPayment"), pos = el.selectionStart, had = stripCardNumber(el);
+    $("#cardWarn").hidden = !had;
+    if(had) el.setSelectionRange(Math.min(pos, el.value.length), Math.min(pos, el.value.length));
+  });
 
   // ---- foto del código de barras (por separado de las fotos del recibo) ----
   let barcodeBlob = null, barcodeExistingId = data.barcodePhoto || null, barcodeRemoved = false;
@@ -356,10 +371,12 @@ function openEditor(data, existingId, rawText){
       else if(barcodeRemoved){ if(barcodeExistingId) await store.delPhoto(barcodeExistingId).catch(()=>{}); barcodePhoto = null; }
       // el número que se anota a lápiz en el papel: se asigna solo una vez, al primer intento de guardar
       if(!existingId && data.number == null) data.number = nextReceiptNumber();
+      stripCardNumber($("#fPayment")); // última barrera: nunca guardar un número de tarjeta completo
       await store.put({
         id, number: data.number ?? null, store:$("#fStore").value, date:$("#fDate").value||null, storeNumber:$("#fNum").value.trim()||null,
         total: $("#fTotal").value.trim()==="" ? null : Number($("#fTotal").value.replace(/[^0-9.\-]/g,"")),
-        time:data.time??null, transaction:data.transaction??null, subtotal:data.subtotal??null, tax:data.tax??null, payment:data.payment??null,
+        time:data.time??null, transaction:data.transaction??null, subtotal:data.subtotal??null, tax:data.tax??null,
+        payment:$("#fPayment").value.trim().slice(0,40)||null, cardName:$("#fCardName").value.trim().slice(0,60)||null,
         photos:photoIds, barcodePhoto, items, createdAt:data.createdAt||new Date().toISOString()
       });
       closeSheet(); resetScan(); $("#pasteBox").value = "";
