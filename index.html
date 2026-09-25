@@ -118,6 +118,11 @@ section[data-tab]{padding-block:8px 24px}
 .paste-how ul{margin:0 0 10px;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 #pasteBox{width:100%;margin-top:10px;border-radius:12px;border:1px solid var(--line);background:var(--paper);padding:10px 12px;font-family:var(--mono);font-size:13px;resize:vertical}
 
+/* foto grande para mantener presionado y copiar el texto, sin pasar por la galería */
+.bigPhotos{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.bigPhotos img{width:100%;border-radius:12px;border:1px solid var(--line);-webkit-touch-callout:default;user-select:text}
+.bigPhotos .empty{font-size:13.5px}
+
 /* form */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .field{display:flex;flex-direction:column;gap:4px}
@@ -232,14 +237,16 @@ details.raw pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;back
     <div class="progress" id="prog" hidden><i></i></div>
     <div class="status" id="scanStatus"></div>
 
-    <div class="label" style="margin-top:22px">Plan B · pegar el texto del recibo</div>
+    <div class="label" style="margin-top:22px">Plan B · copiar el texto directo de la foto</div>
     <div class="paste-how">
-      <p>El lector de texto de tu celular suele leer mejor. Copia el texto de la foto y pégalo abajo:</p>
+      <p>No hace falta guardar la foto en la galería. Mantén el dedo presionado sobre la foto de aquí abajo hasta que el celular reconozca el texto:</p>
       <ul>
-        <li><b>iPhone:</b> abre la foto en Fotos, mantén el dedo sobre el texto, toca <i>Seleccionar todo</i> y luego <i>Copiar</i>.</li>
-        <li><b>Android:</b> abre la foto en Google Fotos, toca <i>Lens</i> (o <i>Copiar texto</i>), luego <i>Seleccionar todo</i> y <i>Copiar</i>.</li>
+        <li><b>iPhone:</b> aparece un recuadro alrededor del texto; toca <i>Seleccionar todo</i> y luego <i>Copiar</i>.</li>
+        <li><b>Android:</b> aparece <i>Copiar texto</i> (o <i>Seleccionar texto</i>); tócalo, toca <i>Seleccionar todo</i> y luego <i>Copiar</i>.</li>
       </ul>
+      <p id="bigPhotosHint">Si no aparece esa opción: abre la foto en Fotos (iPhone) o Google Fotos (Android) y hazlo ahí igual.</p>
     </div>
+    <div class="bigPhotos" id="bigPhotos"></div>
     <textarea id="pasteBox" rows="6" placeholder="Pega aquí el texto del recibo…" aria-label="Texto del recibo"></textarea>
     <div class="row" style="margin-top:10px"><button class="btn primary" id="pasteBtn">Leer texto</button></div>
     <div class="status" id="pasteStatus"></div>
@@ -296,8 +303,8 @@ details.raw pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;back
 </div>
 
 <script>window.cloudReady = new Promise(r => { window._cloudResolve = r; });</script>
-<script type="module" src="cloud.js?v=7"></script>
-<script src="parser.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script type="module" src="cloud.js?v=8"></script>
+<script src="parser.js?v=8"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

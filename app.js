@@ -411,6 +411,18 @@ function renderThumbs(){
     $("#readBtn").disabled = !pickedFiles.length;
     if(!pickedFiles.length) setStatus($("#scanStatus"), "");
   });
+  renderBigPreview();
+}
+// Foto grande del Plan B: el celular reconoce el texto de una foto mostrada en la
+// página igual que en la galería, así que no hace falta guardarla antes.
+function renderBigPreview(){
+  const el = $("#bigPhotos"); if(!el) return;
+  el.innerHTML = pickedFiles.length
+    ? pickedFiles.map((p,i)=>`<img src="${URL.createObjectURL(p.keep)}" alt="Foto ${i+1} del recibo, mantén presionado para copiar el texto">`).join("")
+    : `<p class="hint empty" style="margin:0">Toma la foto arriba y aparecerá aquí para copiar el texto.</p>`;
+  $("#bigPhotosHint").textContent = pickedFiles.length
+    ? "Si no aparece esa opción sobre la foto de arriba: abre la foto en Fotos (iPhone) o Google Fotos (Android) y hazlo ahí igual."
+    : "Si prefieres, puedes seguir usando la foto guardada en Fotos (iPhone) o Google Fotos (Android).";
 }
 
 $("#file").addEventListener("change", async e => {
@@ -617,7 +629,7 @@ async function startCloud(Cloud){
 /* ---------- inicio ---------- */
 (async () => {
   let start = "buscar"; try{ start = localStorage.getItem("tab") || "buscar"; }catch(e){}
-  go(start); renderAll();
+  go(start); renderAll(); renderThumbs();
   // espera la conexión con Firebase (máx. 10 s); si no está configurada o no carga, sigue guardando en el celular
   const Cloud = await Promise.race([window.cloudReady, new Promise(r => setTimeout(() => r(null), 10000))]).catch(() => null);
   if(Cloud?.configured){ startCloud(Cloud); }
