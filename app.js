@@ -476,6 +476,7 @@ $("#readBtn").onclick = async () => {
     setStatus(st, `<span class="spinner"></span>Preparando el lector…`);
     const w = await getWorker();
     let best = null, bestScore = null, bestText = "";
+    const attempts = []; // las lecturas que se van descartando, por si sirven para recuperar un producto
     const steps = OCR_TRIES.length * pickedFiles.length;
     for(let t=0; t<OCR_TRIES.length; t++){
       const tr = OCR_TRIES[t];
@@ -490,8 +491,28 @@ $("#readBtn").onclick = async () => {
       // se combinan por separado (no todo el texto junto) para poder quitar los productos
       // que se repiten cuando dos fotos de un recibo largo se solapan
       const parsed = ReceiptParser.mergeParsed(parts), text = texts.join("\n\n--- foto siguiente ---\n\n"), sc = rank(parsed);
+      attempts.push(parsed);
       if(better(sc, bestScore)){ best = parsed; bestScore = sc; bestText = text; }
       if(best.subtotal != null && best.items.length && Math.abs(itemsSum(best) - best.subtotal) < 0.01) break;
+    }
+    // El código de barras del recibo (arriba del todo, en Ross) suele pegarse a la línea del
+    // primer producto y el lector confunde sus dígitos con letras, así que ese producto no sale.
+    // Si la suma no cuadra con el subtotal, se busca en las otras lecturas un producto que
+    // explique justo lo que falta, y se agrega arriba de la lista.
+    if(best.subtotal != null && best.items.length){
+      const diff = Math.round((best.subtotal - itemsSum(best)) * 100) / 100;
+      if(Math.abs(diff) > 0.01){
+        const known = new Set(best.items.map(it => key(it.code) + "|" + Number(it.price).toFixed(2)));
+        outer: for(const a of attempts){
+          if(a === best) continue;
+          for(const it of a.items){
+            const k = key(it.code) + "|" + Number(it.price).toFixed(2);
+            if(!known.has(k) && Math.abs((it.price * (it.qty||1)) - diff) < 0.01){
+              best.items.unshift(it); break outer;
+            }
+          }
+        }
+      }
     }
     setProg(1);
     lastOcrText = bestText;
